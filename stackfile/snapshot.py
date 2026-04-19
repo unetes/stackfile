@@ -47,6 +47,22 @@ CAPTURERS = {
 }
 
 
+def load_snapshot(path: str = "stackfile.json") -> dict:
+    """Load and return a previously saved snapshot from the given path.
+
+    Raises:
+        FileNotFoundError: if the snapshot file does not exist.
+        ValueError: if the file content is not valid JSON.
+    """
+    snapshot_path = Path(path)
+    if not snapshot_path.exists():
+        raise FileNotFoundError(f"Snapshot file not found: {path}")
+    try:
+        return json.loads(snapshot_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in snapshot file '{path}': {exc}") from exc
+
+
 def take_snapshot(tools: list[str] | None = None, output_path: str = "stackfile.json") -> dict:
     """Capture dependencies for the given tools and write to output_path."""
     tools = tools or SUPPORTED_TOOLS
