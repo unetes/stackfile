@@ -1,123 +1,103 @@
-"""Doctor module — checks that required tools are installed and accessible."""
-
+"""Doctor: check local environment health against a snapshot."""
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from typing import List, Optional
+from pathlib import Path
+from typing import List
 
 
 class DoctorError(Exception):
-    """Raised when the doctor check encounters an unrecoverable error."""
+    pass
 
 
 @dataclass
 class CheckResult:
-    """Result of a single tool check."""
-
     tool: str
-    found: bool
-    version: Optional[str] = None
-    hint: Optional[str] = None
+    available: bool
+    version: str | None = None
+    note: str | None = None
 
-    @property
-    def status_label(self) -> str:
-        return "ok" if self.found else "missing"
+
+def status_label(ok: bool) -> str:
+    return "OK" if ok else "MISSING"
 
 
 @dataclass
 class DoctorReport:
-    """Aggregated results from all checks."""
-
     results: List[CheckResult] = field(default_factory=list)
 
-    @property
     def all_ok(self) -> bool:
-        return all(r.found for r in self.results)
+        return all(r.available for r in self.results)
 
     def to_dict(self) -> dict:
         return {
-            "all_ok": self.all_ok,
+            "all_ok": self.all_ok(),
             "checks": [
                 {
                     "tool": r.tool,
-                    "found": r.found,
+                    "available": r.available,
                     "version": r.version,
-                    "hint": r.hint,
+                    "note": r.note,
                 }
                 for r in self.results
             ],
         }
 
 
-# Map of tool name -> hint shown when the tool is absent
-_HINTS: dict[str, str] = {
-    "pip": "Install Python (https://www.python.org/downloads/) — pip is bundled with it.",
-    "npm": "Install Node.js (https://nodejs.org/) — npm is bundled with it.",
-    "brew": "Install Homebrew (https://brew.sh/) — macOS/Linux package manager.",
-}
-
-_TOOLS = list(_HINTS.keys())
-
-
-def _get_version(tool: str) -> Optional[str]:
-    """Return the version string reported by *tool* --version, or None on failure."""
+def _load(path: str) -> dict:
     try:
-        result = subprocess.run(
-            [tool, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        # Use stdout if populated, otherwise fall back to stderr (npm uses stderr)
-        output = (result.stdout or result.stderr or "").strip()
-        # Grab just the first line to keep things tidy
-        return output.splitlines()[0] if output else None
-    except Exception:
-        return None
+        return json.loads(Path(path).read_text())
+    except FileNotFoundError:
+        raise DoctorError(f"Snapshot not found: {path}")
+    except json.JSONDecodeError as exc:
+        raise DoctorError(f"Invalid JSON in snapshot: {exc}")
 
 
-def run_doctor(tools: Optional[List[str]] = None) -> DoctorReport:
-    """Check whether each requested tool is installed.
+def _check_tool(tool: str) -> CheckResult:
+    found = shutil.which(tool) is not None
+    version = None
+    if found:
+        try:
+            out = subprocess.check_output(
+                [tool, "--version"], stderr=subprocess.STDOUT, text=True
+            )
+            version = out.strip().splitlines()[0]
+        except Exception:
+            version = "unknown"
+    return CheckResult(tool=tool, available=found, version=version)
 
-    Parameters
-    ----------
-    tools:
-        List of tool names to check.  Defaults to ``["pip", "npm", "brew"]``.
 
-    Returns
-    -------
-    DoctorReport
-        A report containing one :class:`CheckResult` per tool.
-    """
-    if tools is None:
-        tools = _TOOLS
+def _tools_from_snapshot(snapshot: dict) -> list[str]:
+    tools = []
+    section_tool_map = {"pip": "pip", "npm": "npm", "brew": "brew"}
+    for section, tool in section_tool_map.items():
+        packages = snapshot.get(section, [])
+        if isinstance(packages, list) and packages:
+            tools.append(tool)
+    return tools
 
+
+def run_doctor(snapshot_path: str) -> DoctorReport:
+    snapshot = _load(snapshot_path)
+    tools = _tools_from_snapshot(snapshot)
+    if not tools:
+        tools = ["pip", "npm", "brew"]
     report = DoctorReport()
     for tool in tools:
-        path = shutil.which(tool)
-        found = path is not None
-        version = _get_version(tool) if found else None
-        hint = None if found else _HINTS.get(tool, f"Install '{tool}' and ensure it is on your PATH.")
-        report.results.append(CheckResult(tool=tool, found=found, version=version, hint=hint))
-
+        report.results.append(_check_tool(tool))
     return report
 
 
 def format_doctor(report: DoctorReport) -> str:
-    """Return a human-readable summary of *report*."""
-    lines: List[str] = ["stackfile doctor\n" + "-" * 40]
+    lines = []
     for r in report.results:
-        icon = "✔" if r.found else "✘"
-        version_str = f"  ({r.version})" if r.version else ""
-        lines.append(f"  {icon}  {r.tool}{version_str}")
-        if r.hint:
-            lines.append(f"       hint: {r.hint}")
-    lines.append("-" * 40)
-    if report.all_ok:
-        lines.append("All tools are available. You're good to go!")
-    else:
-        missing = [r.tool for r in report.results if not r.found]
-        lines.append(f"Missing tools: {', '.join(missing)}")
+        label = status_label(r.available)
+        ver = f" ({r.version})" if r.version else ""
+        note = f" — {r.note}" if r.note else ""
+        lines.append(f"  [{label}] {r.tool}{ver}{note}")
+    summary = "All checks passed." if report.all_ok() else "Some tools are missing."
+    lines.append(f"\n{summary}")
     return "\n".join(lines)
