@@ -51,6 +51,23 @@ def list_tags(snapshot_path: str) -> list[str]:
     return data.get("tags", [])
 
 
+def rename_tag(snapshot_path: str, old_tag: str, new_tag: str, output_path: str | None = None) -> dict[str, Any]:
+    """Rename an existing tag in a snapshot's tag list.
+
+    Raises TagError if ``old_tag`` is not present or ``new_tag`` already exists.
+    """
+    data = _load(snapshot_path)
+    tags: list[str] = data.get("tags", [])
+    if old_tag not in tags:
+        raise TagError(f"Tag '{old_tag}' not found in snapshot.")
+    if new_tag in tags:
+        raise TagError(f"Tag '{new_tag}' already exists in snapshot.")
+    tags[tags.index(old_tag)] = new_tag
+    data["tags"] = tags
+    _save(data, output_path or snapshot_path)
+    return data
+
+
 def tag_and_save(action: str, snapshot_path: str, tag: str, output_path: str | None = None) -> dict[str, Any]:
     """Dispatch add/remove/list actions."""
     if action == "add":
