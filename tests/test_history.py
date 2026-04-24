@@ -77,3 +77,14 @@ def test_corrupt_history_raises(history_file):
         f.write("not-valid-json\n")
     with pytest.raises(HistoryError):
         list_history(history_file)
+
+
+def test_format_history_shows_all_entries(history_file):
+    """Each recorded event should appear as a separate line in the formatted output."""
+    record_event("snapshot", "stack.json", history_file)
+    record_event("restore", "stack.json", history_file)
+    record_event("snapshot", "other.json", history_file)
+    entries = list_history(history_file)
+    result = format_history(entries)
+    lines = [line for line in result.splitlines() if line.strip()]
+    assert len(lines) == 3
