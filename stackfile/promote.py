@@ -16,7 +16,10 @@ def _load(path: str) -> dict:
     if not p.exists():
         raise PromoteError(f"Snapshot file not found: {path}")
     with p.open() as f:
-        return json.load(f)
+        try:
+            return json.load(f)
+        except json.JSONDecodeError as exc:
+            raise PromoteError(f"Invalid JSON in snapshot file '{path}': {exc}") from exc
 
 
 def _save(data: dict, path: str) -> None:
