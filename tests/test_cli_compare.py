@@ -15,7 +15,7 @@ def _write(tmp_path: Path, name: str, data: dict) -> str:
 
 
 def _snap(pip=None) -> dict:
-    pkgs = [{"name": n, "version": v} for n, v in (pip or {}).items()]
+    pkgs = ["name": n, "version": v} for n, v in (pip or {}).items()]
     return {"version": "1", "pip": {"packages": pkgs}, "npm": {"packages": []}, "brew": {"packages": []}}
 
 
@@ -56,3 +56,11 @@ def test_compare_identical_snapshots(tmp_path, capsys):
     main(["compare", a, b])
     out = capsys.readouterr().out
     assert "100.0%" in out
+
+
+def test_compare_missing_file_exits_nonzero(tmp_path):
+    """Passing a non-existent file path should cause a non-zero exit code."""
+    real = _write(tmp_path, "a.json", _snap(pip={"requests": "2.31.0"}))
+    missing = str(tmp_path / "does_not_exist.json")
+    rc = main(["compare", real, missing])
+    assert rc != 0
