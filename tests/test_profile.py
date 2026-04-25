@@ -51,6 +51,19 @@ def test_save_profile_missing_snapshot(tmp_path, profiles_dir):
         save_profile("dev", tmp_path / "missing.json", profiles_dir)
 
 
+def test_save_profile_overwrites_existing(snapshot_file, tmp_path, profiles_dir):
+    """Saving a profile with the same name should overwrite the existing file."""
+    save_profile("dev", snapshot_file, profiles_dir)
+
+    updated_snap = tmp_path / "updated.json"
+    updated_snap.write_text(json.dumps({"version": "2", "pip": []}))
+    save_profile("dev", updated_snap, profiles_dir)
+
+    data = show_profile("dev", profiles_dir)
+    assert data["version"] == "2"
+    assert list_profiles(profiles_dir) == ["dev"]
+
+
 def test_load_profile_copies_to_dest(snapshot_file, tmp_path, profiles_dir):
     save_profile("dev", snapshot_file, profiles_dir)
     out = tmp_path / "restored.json"
