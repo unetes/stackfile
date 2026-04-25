@@ -69,3 +69,10 @@ def test_merge_and_save_writes_file(tmp_path):
     data = json.loads(Path(out).read_text())
     assert "packages" in data
     assert "created_at" in data
+
+
+def test_merge_snapshots_missing_file_raises(tmp_path):
+    base = write_snapshot(tmp_path, "base.json", BASE)
+    missing = str(tmp_path / "nonexistent.json")
+    with pytest.raises(FileNotFoundError):
+        merge_snapshots(base, missing)
