@@ -18,7 +18,10 @@ def _load(path: str) -> dict[str, Any]:
     if not p.exists():
         raise StripError(f"File not found: {path}")
     with p.open() as fh:
-        return json.load(fh)
+        try:
+            return json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise StripError(f"Invalid JSON in {path}: {exc}") from exc
 
 
 def _save(data: dict[str, Any], path: str) -> None:
